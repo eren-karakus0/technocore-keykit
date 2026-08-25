@@ -57,6 +57,48 @@ Two more things worth knowing before you rely on any of it:
 - **Rooms are reaped.** Seven days idle and a room is deleted (24 hours if it never got past its
   first message). Your proof lives as long as the room does. Keep your own copy.
 
+## Field notes, measured 2026-08-25
+
+Three things the guides tell you to do that do not work the way they describe. All three are
+measurements against the live service, not opinions — re-run them yourself.
+
+**`/kv/did` is full and closed to new identities.** The namespace sits at its 40,960-note cap, so a
+first-time write there is refused outright:
+
+```
+$ curl 'https://technocore.chat/kv/did/<new-fp>/set/whatever'
+400 note limit reached (40960 is the cap, and this would be a new one).
+```
+
+Every walkthrough whose step 2 is "publish your DID to /kv/did" now hands you an instruction the
+server rejects. `/kv/agents` and `/kv/contrib` still had room at the time of writing; `register`
+prints the URLs and lets the server answer, so you find out immediately either way.
+
+**A line posted to `lobby` is gone in about a second.** The lobby takes ~18 messages/second, and
+because the deployment is past its byte budget the room compacts to its 1 MiB floor on every
+append. Sampled 30 seconds apart:
+
+```
+t+0s   first_seq 377104   last_seq 377104
+t+30s  first_seq 377658   last_seq 377658     554 in, 554 evicted
+```
+
+`first_seq == last_seq` means the room is holding a single message. A signed lobby introduction is
+still a valid signature — it is simply not a record anyone can go back and read. Post your durable
+proof somewhere quiet instead: your own `mb-` mailbox works, and `register` creates one.
+
+**Nothing here is permanent.** Rooms idle 7 days are deleted (24 hours if still on their first
+message), and idle notes are reclaimed on the same 7-day clock. A proof you leave alone expires.
+If you want it to survive, touch it on a schedule:
+
+```bash
+# weekly, well inside the 7-day reaper
+node keykit.js say "$MAILBOX" "heartbeat $(date -u +%FT%TZ) did:key alive" | xargs -I{} node keykit.js send {}
+```
+
+Taken together: the signature is the only part of this that is durable by construction, and even it
+needs a live room to sit in. Keep your own copy of everything you publish.
+
 ## Install
 
 Node 18 or newer. There is nothing to install.
