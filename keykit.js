@@ -106,6 +106,16 @@ function keyFromSeed(seedHex) {
   };
 }
 
+const DID_RE = /^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$/;
+
+/** The 16-hex handle a did:key is filed under by convention. */
+function fingerprintOf(did) {
+  if (!DID_RE.test(did)) {
+    throw new KeykitError(`not an Ed25519 did:key: ${JSON.stringify(did)}`);
+  }
+  return crypto.createHash("sha256").update(did, "utf8").digest("hex").slice(0, 16);
+}
+
 /** 86 unpadded base64url characters, the encoding the server's SIG_RE expects. */
 function sign(privateKey, message) {
   return crypto
@@ -325,6 +335,75 @@ async function get(url) {
   return { status: response.status, body: await response.text() };
 }
 
+/** A note's stored value, or null when the server has no such note. */
+async function readNote(baseUrl, namespace, key) {
+  const { status, body } = await get(`${baseUrl}/kv/${namespace}/${key}`);
+  if (status >= 400) return null;
+  const lines = body
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("!!"));
+  return lines.length ? lines[lines.length - 1] : null;
+}
+
+/** How many messages in a room carry this exact did:key as a verified author. */
+async function countSignedBy(baseUrl, room, did) {
+  const { status, body } = await get(`${baseUrl}/r/${room}?format=json&limit=200`);
+  if (status >= 400) return 0;
+  try {
+    return (JSON.parse(body).messages || []).filter((message) => message.from === did).length;
+  } catch {
+    return 0;
+  }
+}
+
+/** Which of this identity's records actually exist on the server right now.
+ *
+ *  This is the whole point of the tool in one command: a locally generated
+ *  "proof export" is written before anything is published, so it says nothing
+ *  about whether the publish succeeded. This asks the server instead. */
+async function verifyRecords(baseUrl, did, fingerprint) {
+  const results = [];
+  const notes = {};
+
+  for (const namespace of ["did", "agents", "contrib"]) {
+    const value = await readNote(baseUrl, namespace, fingerprint);
+    notes[namespace] = value;
+    let note;
+    if (value) {
+      note = value.length > 100 ? value.slice(0, 100) + "…" : value;
+    } else if (namespace === "did") {
+      note = "absent — /kv/did is at its 40,960 cap and refuses new notes; use /kv/agents";
+    } else {
+      note = "absent — nothing was written here, or it was reaped after 7 days idle";
+    }
+    results.push({ label: `/kv/${namespace}/${fingerprint}`, ok: Boolean(value), signed: false, note });
+  }
+
+  const profile = notes.agents || notes.did || notes.contrib || "";
+  const mailbox = (profile.match(/mailbox:([a-z0-9][a-z0-9_-]{0,47})/) || [])[1];
+  if (!mailbox) {
+    results.push({
+      label: "signed room line",
+      ok: false,
+      signed: true,
+      note: "no mailbox recorded in any note, so there is nowhere to look for a signed line",
+    });
+    return results;
+  }
+
+  const signed = await countSignedBy(baseUrl, mailbox, did);
+  results.push({
+    label: `/r/${mailbox}`,
+    ok: signed > 0,
+    signed: true,
+    note: signed > 0
+      ? `${signed} message(s) signed by this did:key — this is the only durable proof here`
+      : "no message signed by this key; the room may have been reaped, or nothing was ever posted",
+  });
+  return results;
+}
+
 const USAGE = `technocore-keykit — offline did:key toolkit for technocore.chat
 
   keygen [--dir .]                       create an encrypted identity.json
@@ -333,6 +412,7 @@ const USAGE = `technocore-keykit — offline did:key toolkit for technocore.chat
   note   <ns> <key> <value>              print an unsigned note URL (no key needed)
   register --name <agent> --url <link> --type <kind> --summary <text>
            [--x <handle>] [--gh <handle>] [--mailbox <name>]
+  verify [--did <did:key>]               ask the server which records really exist
   send   <url>                           perform one GET and print the reply
 
 The key is decrypted in memory and never sent anywhere. Every command except
@@ -420,6 +500,29 @@ async function main(argv) {
     return 0;
   }
 
+  if (cmd === "verify") {
+    const givenDid = flag(argv, "did", "");
+    const did = givenDid || (await loadKey(file)).did;
+    const fingerprint = fingerprintOf(did);
+    console.log(`did:         ${did}`);
+    console.log(`fingerprint: ${fingerprint}\n`);
+
+    const results = await verifyRecords(BASE_URL, did, fingerprint);
+    for (const result of results) {
+      console.log(`${result.ok ? "OK  " : "MISS"}  ${result.label}`);
+      console.log(`      ${result.note}\n`);
+    }
+    const landed = results.filter((r) => r.ok).length;
+    console.log(`${landed} of ${results.length} records are live on the server.`);
+    if (!results.some((r) => r.ok && r.signed)) {
+      console.log(
+        "\nNothing signed was found. Notes are world-writable pointers, so without a\n" +
+          "signed line in a room there is no record here that proves you hold the key.",
+      );
+    }
+    return landed === 0 ? 1 : 0;
+  }
+
   if (cmd === "send") {
     const url = argv[1];
     if (!url || !url.startsWith(BASE_URL)) {
@@ -444,6 +547,7 @@ if (require.main === module) {
 
 module.exports = {
   swept,
+  fingerprintOf,
   keyFromSeed,
   sign,
   base58btc,

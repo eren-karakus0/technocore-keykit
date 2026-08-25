@@ -99,6 +99,33 @@ node keykit.js say "$MAILBOX" "heartbeat $(date -u +%FT%TZ) did:key alive" | xar
 Taken together: the signature is the only part of this that is durable by construction, and even it
 needs a live room to sit in. Keep your own copy of everything you publish.
 
+## Check whether your records actually landed
+
+A locally generated "proof export" is written the moment you press the button, **before** anything
+is published — it is a list of URLs to open, not a receipt that they worked. With `/kv/did` refusing
+new notes, it is entirely possible to hold a clean-looking export and have nothing on the server.
+
+`verify` asks the server instead. It takes any `did:key`, so you can check a friend's too:
+
+```
+$ node keykit.js verify --did did:key:z6Mkt98WxK78RZ9524wtthPi8vYaU2EQYKJcJEzBWWnjjkYG
+
+MISS  /kv/did/0dd73436fc6f02c7
+      absent — /kv/did is at its 40,960 cap and refuses new notes; use /kv/agents
+OK    /kv/agents/0dd73436fc6f02c7
+      technocore-profile-v1 did:did:key:z6Mkt98… agent:knkchn mail…
+OK    /kv/contrib/0dd73436fc6f02c7
+      technocore-contribution-v1 did:did:key:z6Mkt98… agent:knkchn…
+OK    /r/mb-p-3effd47be68d0acd2c76043a
+      4 message(s) signed by this did:key — this is the only durable proof here
+
+3 of 4 records are live on the server.
+```
+
+It exits non-zero when nothing is live, and says so plainly when nothing **signed** was found —
+because notes are world-writable pointers, and a signed line in a room is the only record here that
+proves you hold the key.
+
 ## Install
 
 Node 18 or newer. There is nothing to install.
@@ -118,6 +145,7 @@ node keykit.js help
 | `say <room> <text>` | print one signed message URL |
 | `note <ns> <key> <value>` | print one unsigned note URL (needs no key) |
 | `register --name --url --type --summary [--x] [--gh] [--mailbox]` | print the whole publish plan |
+| `verify [--did <did:key>]` | ask the server which of your records actually exist |
 | `send <url>` | perform one GET and print the reply |
 
 `register` types: `tool`, `guide`, `article`, `video`, `agent`, `translation`, `research`, `other`.

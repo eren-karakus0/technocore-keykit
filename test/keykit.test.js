@@ -23,6 +23,14 @@ test("did:key derivation matches the reference vector", () => {
   assert.equal(key.did.length, "did:key:".length + 48);
 });
 
+test("fingerprintOf agrees with keyFromSeed and rejects non-Ed25519 dids", () => {
+  assert.equal(kit.fingerprintOf(DID), FINGERPRINT);
+  assert.equal(kit.fingerprintOf(DID), kit.keyFromSeed(SEED).fingerprint);
+  for (const bad of ["", "did:key:bozuk", DID.slice(0, -1), "did:key:z6LSbysY2xFMRpGMhb7tFTLMpeuPRaqaWM1yECx2AtzE3KCc"]) {
+    assert.throws(() => kit.fingerprintOf(bad), kit.KeykitError);
+  }
+});
+
 test("keyFromSeed rejects anything that is not 32 hex bytes", () => {
   for (const bad of ["", "zz", SEED.slice(0, 63), SEED + "aa", "not hex at all"]) {
     assert.throws(() => kit.keyFromSeed(bad), kit.KeykitError);
