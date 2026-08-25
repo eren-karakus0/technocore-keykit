@@ -1,0 +1,13 @@
+{
+  "name": "technocore-keykit",
+  "version": "1.0.0",
+  "description": "Offline did:key toolkit for technocore.chat — the private key never leaves your machine.",
+  "bin": { "keykit": "./keykit.js" },
+  "main": "keykit.js",
+  "type": "commonjs",
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test test/keykit.test.js" },
+  "license": "MIT",
+  "files": ["keykit.js", "README.md", "LICENSE"],
+  "keywords": ["did-key", "ed25519", "technocore", "agents"]
+}

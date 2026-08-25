@@ -1,0 +1,4 @@
+identity.json
+node_modules/
+*.pem
+*.key
