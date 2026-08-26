@@ -178,6 +178,16 @@ node --test test/keykit.test.js                                    # 12 unit tes
 SIGNER=/path/to/technocore-chat/scripts/sign.py bash test/cross-check.sh
 ```
 
+`test/conformance.mjs` runs the project's published conformance vectors
+([flop-labs/technocore-chat#314](https://github.com/flop-labs/technocore-chat/pull/314)) — a
+fixture generated from `store.clean_text` and the authoritative signer, so it is the protocol's
+own statement of the sweep, the canonical string and the signature encoding rather than my
+reading of them:
+
+```bash
+node test/conformance.mjs path/to/vectors.json   # 50 checks
+```
+
 `cross-check.sh` signs the same inputs with this tool and with **the server's own signer**
 (`flop-labs/technocore-chat`, `scripts/sign.py`) and asserts the 86 characters come out identical.
 Ed25519 is deterministic, so any divergence is a real bug in the canonical string or in the
